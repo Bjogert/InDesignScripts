@@ -119,7 +119,7 @@ app.doScript(
         // ------------------------------------------------
         // 2) CREATE PROGRESS UI
         // ------------------------------------------------
-        var w = new Window("palette", "Sprinkling Fairy Dust", undefined, { closeButton: false });
+        var w = new Window("palette", "Make it neat and tidy", undefined, { closeButton: false });
         w.orientation = "column";
         w.alignChildren = ["fill", "center"];
 
@@ -366,7 +366,7 @@ app.doScript(
 
             // Update progress
             progressBar.value = pageIndex + 1;
-            progressText.text = "Processing page " + (pageIndex + 1) + " of " + totalPages;
+            progressText.text = "Sprinkling fairydust on page " + (pageIndex + 1) + " of " + totalPages;
             w.update();
         }
 
@@ -383,8 +383,8 @@ app.doScript(
         if (updatedCount > 0) {
             alert(
                 updatedCount + " text frames were processed.\n" +
-                modifiedCount + " text frames were actually modified.\n" +
-                "All changes in one undo step!"
+                modifiedCount + " text frames were actually tinkered with.\n" +
+                "Am i a good computer or just OK?"
             );
         } else {
             alert("No text frames matching the criteria were found.");
