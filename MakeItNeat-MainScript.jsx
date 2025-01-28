@@ -1,4 +1,4 @@
-#target "InDesign"
+// @ts-nocheck #target "InDesign"
 
 /*
     MakeItNeat-MainScript.jsx
