@@ -13,7 +13,7 @@
         },
         {
             pdfName: "NOK",
-            layersToShow: ["Lager 1", "Svenska", "NOK_NO"]
+            layersToShow: ["Lager 1", "Svenska", "SEK_NO"]
         },
         {
             pdfName: "DKK",

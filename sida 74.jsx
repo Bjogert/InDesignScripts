@@ -1,23 +1,31 @@
 #target "InDesign"
 
 /**
- * LeftAlignNumbersWithFrameWidth.jsx
+ * LeftAlignNumbersWithFrameWidth-SelectionOnly.jsx
  *
- * 1) Checks all text frames in the document.
- * 2) Skips frames that have letters or punctuation—only digits + whitespace allowed.
- * 3) Removes old tabs/spaces, splits the text into chunks, inserts single tabs.
- * 4) Decides how many chunks => picks tabPositions + frameWidth from settings.
- * 5) Applies left-aligned tab stops + sets paragraph justification to LEFT_ALIGN.
- * 6) (Optional) Resizes the text frame to frameWidth if defined.
- * 7) Single undo step. Progress bar included.
+ * 1) Processes only SELECTED text frames in the active InDesign document.
+ * 2) Skips frames containing any letters/punctuation (only digits + whitespace allowed).
+ * 3) Removes old tabs/spaces, splits the text into chunks, re-inserts single tabs.
+ * 4) Chooses tab stops + optional frame width (extending to the right) based on chunk count.
+ * 5) Applies left-aligned tab stops and paragraph justification (LEFT_ALIGN).
+ * 6) Maintains a progress bar for the selected text frames.
+ * 7) All changes happen in a single undo step (UNDO).
+ *
+ * Note: We have removed:
+ *   - The code that unlocked and made all layers visible.
+ *   - The code that turned off preflight.
+ *
+ * Usage:
+ *   - Select one or more text frames on an unlocked, visible layer.
+ *   - Run this script. Only numeric frames in the selection are processed.
  */
 
 app.doScript(
     function main() {
         // -----------------------------------------
-        // 1) PROGRESS BAR / PALETTE
+        // 1) BUILD PROGRESS PALETTE
         // -----------------------------------------
-        var w = new Window("palette", "Aligning Numeric Frames", undefined, { closeButton: false });
+        var w = new Window("palette", "Aligning Numeric Frames (Selection)", undefined, { closeButton: false });
         w.orientation = "column";
         w.alignChildren = ["fill", "center"];
 
@@ -30,7 +38,7 @@ app.doScript(
 
         try {
             // -----------------------------------------
-            // 2) DOCUMENT CHECK
+            // 2) CHECK DOCUMENT & SELECTION
             // -----------------------------------------
             if (!app.documents.length) {
                 alert("No document open!");
@@ -39,12 +47,19 @@ app.doScript(
             }
             var doc = app.activeDocument;
 
+            // If no objects are selected, nothing to do
+            if (!app.selection || app.selection.length === 0) {
+                alert("No objects selected. Please select one or more text frames.");
+                w.close();
+                return;
+            }
+
             // -----------------------------------------
-            // 3) DEFINE PER-CHUNK SETTINGS
+            // 3) CHUNK-BASED SETTINGS
             // -----------------------------------------
             // For each chunk count, define:
-            //   - tabPositions: array of left-aligned tab stop positions (in mm)
-            //   - frameWidth: optional new width (in mm) for the text frame, or null to skip resizing
+            //   tabPositions: left-aligned tab stops (in mm)
+            //   frameWidth: optional new width (in mm). If null, no resizing.
             var settingsByChunkCount = {
                 1: {
                     tabPositions: [],
@@ -62,66 +77,78 @@ app.doScript(
                     tabPositions: [21.6, 47.5, 72.7],
                     frameWidth: 100
                 }
-                // Extend if needed, e.g. 5, 6, ...
+                // Extend if needed (e.g. 5, 6, etc.)
             };
 
             // -----------------------------------------
-            // 4) SPEED SETTINGS
+            // 4) OPTIONAL: CHANGE UNITS
             // -----------------------------------------
-            // Turn off preflight
-            doc.preflightOptions.preflightOff = true;
-
-            // Remember old measurement units
+            // If you want to ensure tabPositions match mm, set measurement units:
             var oldH = doc.viewPreferences.horizontalMeasurementUnits;
             var oldV = doc.viewPreferences.verticalMeasurementUnits;
-
-            // Switch to mm so we can match the above positions easily
             doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.MILLIMETERS;
             doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.MILLIMETERS;
 
-            // Unlock & show all layers
-            for (var i = 0; i < doc.layers.length; i++) {
-                doc.layers[i].locked = false;
-                doc.layers[i].visible = true;
-            }
+            // (We are NOT turning off preflight or unlocking layers now.)
 
-            // Turn off redraw
+            // Turn off redraw for speed
             app.scriptPreferences.enableRedraw = false;
 
             // -----------------------------------------
-            // 5) LOOP ALL TEXT FRAMES
+            // 5) FILTER SELECTED TEXT FRAMES
             // -----------------------------------------
-            var frames = doc.textFrames;
-            var totalFrames = frames.length;
-            bar.maxvalue = totalFrames; // if you get an error, use bar.maxValue
+            var selectedFrames = [];
+            for (var s = 0; s < app.selection.length; s++) {
+                var selObj = app.selection[s];
+                // We only want text frames
+                if (selObj.constructor.name === "TextFrame") {
+                    selectedFrames.push(selObj);
+                }
+            }
+
+            if (selectedFrames.length === 0) {
+                alert("No text frames found in the selection.");
+                w.close();
+                return;
+            }
+
+            var totalFrames = selectedFrames.length;
+            bar.maxvalue = totalFrames; // If error, try bar.maxValue
 
             var processed = 0;
             var changed = 0;
 
-            for (var f = 0; f < totalFrames; f++) {
-                var tf = frames[f];
+            // -----------------------------------------
+            // 6) PROCESS SELECTED FRAMES
+            // -----------------------------------------
+            for (var i = 0; i < selectedFrames.length; i++) {
+                var tf = selectedFrames[i];
                 var didChange = processFrame(tf, settingsByChunkCount);
                 if (didChange) changed++;
                 processed++;
 
-                // Update progress
-                bar.value = f + 1;
-                statusText.text = "Processing frame " + (f + 1) + " of " + totalFrames;
+                // Update the progress bar & text
+                bar.value = processed;
+                statusText.text = "Processing " + processed + " / " + totalFrames + " text frames...";
                 w.update();
             }
 
             // -----------------------------------------
-            // 6) RESTORE & REPORT
+            // 7) RESTORE & REPORT
             // -----------------------------------------
+            // Re-enable redraw
             app.scriptPreferences.enableRedraw = true;
-            doc.preflightOptions.preflightOff = false;
+
+            // Restore measurement units
             doc.viewPreferences.horizontalMeasurementUnits = oldH;
             doc.viewPreferences.verticalMeasurementUnits = oldV;
 
+            // Close progress window
             w.close();
 
+            // Final message
             alert(
-                "Checked " + processed + " text frames.\n" +
+                "Scanned " + processed + " selected text frames.\n" +
                 changed + " numeric frames were reformatted.\n" +
                 "All changes in one undo step!"
             );
@@ -129,6 +156,7 @@ app.doScript(
         } catch (err) {
             alert("Error: " + err.message);
         } finally {
+            // Ensure window closes even on error
             if (w.visible) w.close();
             app.scriptPreferences.enableRedraw = true;
         }
@@ -137,44 +165,45 @@ app.doScript(
     [],
     // Single undo step
     UndoModes.FAST_ENTIRE_SCRIPT,
-    "Left Align Numbers with Optional Frame Width"
+    "Left Align Numbers (Selection Only)"
 );
 
 
 /**
  * processFrame(textFrame, settingsByChunkCount)
- * 1) Checks if text is purely numeric (digits + whitespace). If not, return false.
- * 2) Clean up old tabs/spaces, split, rejoin with \t
- * 3) Determine chunk count => get tabPositions & frameWidth
- * 4) Apply left-aligned tab stops & left justification
- * 5) (Optional) resize text frame
- * Returns true if content changed, false otherwise
+ * 1) Checks if content is purely numeric (digits + whitespace).
+ * 2) Cleans up tabs/spaces, splits into chunks => rejoin with \t.
+ * 3) Determines chunk count => picks tabPositions & frameWidth from config.
+ * 4) Applies left-aligned tab stops & left justification to each paragraph.
+ * 5) Optionally resizes the text frame (extend right edge).
+ * Returns true if content changed, false otherwise.
  */
 function processFrame(textFrame, settingsByChunkCount) {
-    if (!textFrame.isValid || !textFrame.parentStory) return false;
+    if (!textFrame.isValid || !textFrame.parentStory) {
+        return false;
+    }
 
     var oldContent = textFrame.contents;
-    if (!oldContent) return false;
+    if (!oldContent) {
+        return false;
+    }
 
-    // A) Remove tabs & extra spaces
-    var newContent = oldContent.replace(/\t+/g, " ");   // remove tabs
-    newContent = newContent.replace(/\s+/g, " ");       // multiple spaces => single
-    newContent = newContent.replace(/^\s+|\s+$/g, "");  // trim
+    // 1) Remove old tabs + multiple spaces, trim
+    var newContent = oldContent.replace(/\t+/g, " ");
+    newContent = newContent.replace(/\s+/g, " ");
+    newContent = newContent.replace(/^\s+|\s+$/g, "");
 
-    // B) Check if purely numeric (digits + space)
-    //    If there's any letter or punctuation, skip.
+    // 2) Must be digits + spaces only
     var isNumericOnly = /^[0-9 ]*$/.test(newContent);
     if (!isNumericOnly) {
-        return false; // skip non-numeric frames
+        return false; // skip non-numeric
     }
     if (!newContent) {
         return false; // nothing left
     }
 
-    // C) Split => chunks
-    var chunks = newContent.split(" "); // e.g. ["1234", "5678"] => 2 chunks
-
-    // D) Rebuild with single tabs
+    // 3) Split => chunks, rejoin with tabs
+    var chunks = newContent.split(" ");
     newContent = chunks.join("\t");
 
     var contentChanged = (newContent !== oldContent);
@@ -182,21 +211,19 @@ function processFrame(textFrame, settingsByChunkCount) {
         textFrame.contents = newContent;
     }
 
-    // E) Figure out which config to use, based on chunk count
+    // 4) Determine chunkCount => config
     var chunkCount = chunks.length;
     var config = settingsByChunkCount[chunkCount];
-
-    // If no config, we can skip tab stops or do a fallback
     if (!config) {
-        // e.g., do nothing extra
+        // No config for this chunk count => do nothing else
         return contentChanged;
     }
 
-    // F) Apply tab stops (left-aligned) + left justification
+    // Apply left-aligned tab stops & justification
     var paragraphs = textFrame.parentStory.paragraphs;
-    for (var i = 0; i < paragraphs.length; i++) {
-        var para = paragraphs[i];
-        // Clear old stops
+    for (var p = 0; p < paragraphs.length; p++) {
+        var para = paragraphs[p];
+        // Remove existing tab stops
         while (para.tabStops.length > 0) {
             para.tabStops[0].remove();
         }
@@ -207,17 +234,16 @@ function processFrame(textFrame, settingsByChunkCount) {
             ts.alignment = TabStopAlignment.LEFT_ALIGN;
             ts.position = positions[t];
         }
-        // Force left align
         para.justification = Justification.LEFT_ALIGN;
     }
 
-    // G) Resize frame if config.frameWidth != null
+    // 5) Resize frame if config.frameWidth is set
     if (config.frameWidth != null) {
         var gb = textFrame.geometricBounds; // [y1, x1, y2, x2]
-        var top = gb[0];
+        var top  = gb[0];
         var left = gb[1];
         var bottom = gb[2];
-        var right = left + config.frameWidth;
+        var right = left + config.frameWidth; // keep left edge, shift right edge
         textFrame.geometricBounds = [top, left, bottom, right];
     }
 
