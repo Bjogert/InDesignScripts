@@ -36,11 +36,11 @@ app.doScript(
 
         // Page indices needing a special approach
         // (uses handleSpecialCase if certain conditions match)
-        var specialPages = [50]; // Example: page 49 (index 48)
+        var specialPages = [40]; // Example: page 49 (index 48)
 
         // The page(s) that should use the "LeftAlignNumbersWithFrameWidth" approach
         // Example: page 74 => index 73
-        var leftAlignPages = [75];
+        var leftAlignPages = [63];
 
         // Original "handleNumbers" settings (the old approach).
         var settings = {
