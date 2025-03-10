@@ -1,165 +1,126 @@
 #target "InDesign"
 
-(function() {
-    app.doScript(main, ScriptLanguage.JAVASCRIPT, [], UndoModes.ENTIRE_SCRIPT, "Replace Script Labels");
+(function(){
+    app.doScript(main, ScriptLanguage.JAVASCRIPT, [], UndoModes.ENTIRE_SCRIPT, "Fast Replace Labels and Contents");
 
-    function main() {
-        if (!app.documents.length) {
-            alert("No document open.");
-            return;
+    function main(){
+        if(!app.documents.length){
+            alert("No document open."); return;
         }
 
         var doc = app.activeDocument;
-        var initialLabel = "";
+        var priceGroups=["SEK_SE","SEK_NO","DKK_DK","EUR_EU","GBP_UK","EUR_BEIR","EUR_EURAEA","USD_US","EUR_DE"];
 
-        var priceGroups = [
-            "SEK_SE", "SEK_NO", "DKK_DK",
-            "EUR_EU", "GBP_UK", "EUR_BEIR",
-            "EUR_EURAEA", "USD_US", "EUR_DE"
-        ];
+        if(app.selection.length!==1||!(app.selection[0]instanceof TextFrame)){
+            alert("Select exactly one source text box first."); return;
+        }
 
-        // Corrected suffix trimming for ExtendScript compatibility
-        if (app.selection.length === 1 && app.selection[0] instanceof TextFrame) {
-            initialLabel = app.selection[0].label || "";
-            for (var p = 0; p < priceGroups.length; p++) {
-                var suffix = "_" + priceGroups[p];
-                if (initialLabel.length > suffix.length && initialLabel.substr(-suffix.length) === suffix) {
-                    initialLabel = initialLabel.substr(0, initialLabel.length - suffix.length);
-                    break;
-                }
+        var initialLabel=app.selection[0].label;
+
+        for(var p=0;p<priceGroups.length;p++){
+            var suffix="_"+priceGroups[p];
+            if(initialLabel.substr(-suffix.length)===suffix){
+                initialLabel=initialLabel.substr(0,initialLabel.length-suffix.length);
+                break;
             }
         }
 
-        var dlg = app.dialogs.add({name: "Replace Script Labels", canCancel: true});
-        var col1 = dlg.dialogColumns.add();
-        var col2 = dlg.dialogColumns.add();
+        var dlg=app.dialogs.add({name:"Fast Replace Labels",canCancel:true});
+        var col1=dlg.dialogColumns.add();
 
-        var rowOld = col1.dialogRows.add();
-        rowOld.staticTexts.add({staticLabel: "Old base label:"});
-        var oldLabelField = rowOld.textEditboxes.add({editContents: initialLabel, minWidth: 160});
+        var oldLabelField=col1.textEditboxes.add({staticLabel:"Old base label:",editContents:initialLabel,minWidth:180});
+        var newLabelField=col1.textEditboxes.add({staticLabel:"New base label:",editContents:"",minWidth:180});
 
-        var rowNew = col1.dialogRows.add();
-        rowNew.staticTexts.add({staticLabel: "New base label:"});
-        var newLabelField = rowNew.textEditboxes.add({editContents: "", minWidth: 160});
+        var replaceContentCheckbox=col1.checkboxControls.add({
+            staticLabel:"Replace frame contents",
+            checkedState:true
+        });
 
-        var rowHeading = col2.dialogRows.add();
-        rowHeading.staticTexts.add({staticLabel: "Select Price Groups:"});
+        var col2=dlg.dialogColumns.add();
+        col2.staticTexts.add({staticLabel:"Select Price Groups:"});
+        var gpCol=col2.borderPanels.add().dialogColumns.add();
 
-        var groupsPanel = col2.borderPanels.add();
-        var gpCol = groupsPanel.dialogColumns.add();
-
-        var cbxGroups = [];
-        for (var p = 0; p < priceGroups.length; p++) {
-            var r = gpCol.dialogRows.add();
-            var cb = r.checkboxControls.add({staticLabel: priceGroups[p], checkedState: false});
-            cbxGroups.push({name: priceGroups[p], checkbox: cb});
+        var cbxGroups=[];
+        for(var i=0;i<priceGroups.length;i++){
+            cbxGroups.push(gpCol.checkboxControls.add({staticLabel:priceGroups[i],checkedState:false}));
         }
+        var cbAll=gpCol.checkboxControls.add({staticLabel:"ALL price groups",checkedState:false});
 
-        var rowAll = gpCol.dialogRows.add();
-        var cbAll = rowAll.checkboxControls.add({staticLabel: "ALL price groups", checkedState: false});
+        if(!dlg.show()){dlg.destroy();return;}
 
-        if (!dlg.show()) {
-            dlg.destroy();
-            return;
-        }
+        var oldBase=oldLabelField.editContents;
+        var newBase=newLabelField.editContents;
+        var replaceContent=replaceContentCheckbox.checkedState;
 
-        var oldBase = oldLabelField.editContents;
-        var newBase = newLabelField.editContents;
-        var allChecked = cbAll.checkedState;
-
-        var selectedGroups = [];
-        if (!allChecked) {
-            for (var sg = 0; sg < cbxGroups.length; sg++) {
-                if (cbxGroups[sg].checkbox.checkedState) {
-                    selectedGroups.push(cbxGroups[sg].name);
-                }
+        var selectedGroups=cbAll.checkedState?priceGroups.slice():[];
+        if(!cbAll.checkedState){
+            for(var i=0;i<cbxGroups.length;i++){
+                if(cbxGroups[i].checkedState)selectedGroups.push(priceGroups[i]);
             }
         }
+
         dlg.destroy();
 
-        if (!oldBase) {
-            alert("No old base label specified.");
-            return;
-        }
-        if (!newBase) {
-            alert("No new base label specified.");
-            return;
-        }
-        if (!allChecked && selectedGroups.length === 0) {
-            alert("No price groups selected.");
-            return;
+        if(!oldBase||!newBase||selectedGroups.length===0){
+            alert("Please provide necessary details.");return;
         }
 
-        var layers = doc.layers, originalStates = [];
-        for (var i = 0; i < layers.length; i++) {
-            originalStates[i] = {locked: layers[i].locked, visible: layers[i].visible};
-            layers[i].locked = false;
-            layers[i].visible = true;
+        var layers=doc.layers,states=[];
+        for(var i=0;i<layers.length;i++){
+            states[i]={locked:layers[i].locked,visible:layers[i].visible};
+            layers[i].locked=false;layers[i].visible=true;
         }
 
-        var replacedCount = 0;
-        var pagesAffected = {};
-        var pages = doc.pages;
-        
-        if (allChecked) {
-            var prefixToFind = oldBase + "_";
-            for (var a = 0; a < pages.length; a++) {
-                var framesA = pages[a].textFrames;
-                for (var b = 0; b < framesA.length; b++) {
-                    var currentLabel = framesA[b].label;
-                    if (currentLabel.indexOf(prefixToFind) === 0) {
-                        var suffix = currentLabel.substring(oldBase.length);
-                        var newLabel = newBase + suffix;
-                        if (framesA[b].label !== newLabel) {
-                            framesA[b].label = newLabel;
-                            replacedCount++;
-                            pagesAffected[pages[a].name] = true;
+        var frameMap={};
+        var frames=doc.textFrames.everyItem().getElements();
+        for(var f=0;f<frames.length;f++){
+            frameMap[frames[f].label]=frames[f].contents;
+        }
+
+        var replacedCount=0,pagesAffected={},changedFrames=[];
+
+        for(var f=0;f<frames.length;f++){
+            var frame=frames[f];
+            for(var g=0;g<selectedGroups.length;g++){
+                var oldFullLabel=oldBase+"_"+selectedGroups[g];
+                var newFullLabel=newBase+"_"+selectedGroups[g];
+
+                if(frame.label===oldFullLabel){
+                    frame.label=newFullLabel;
+
+                    if(replaceContent){
+                        var replacementContent=frameMap[newFullLabel];
+                        if(replacementContent==null){
+                            replacementContent=prompt("Enter content for "+newFullLabel+":","New content here");
+                            if(replacementContent==null)continue;
+                            frameMap[newFullLabel]=replacementContent;
                         }
+                        frame.contents=replacementContent;
                     }
-                }
-            }
-        } else {
-            for (var g = 0; g < selectedGroups.length; g++) {
-                var oldFullLabel = oldBase + "_" + selectedGroups[g];
-                var newFullLabel = newBase + "_" + selectedGroups[g];
-        
-                for (var p2 = 0; p2 < pages.length; p2++) {
-                    var frames2 = pages[p2].textFrames;
-                    for (var f2 = 0; f2 < frames2.length; f2++) {
-                        if (frames2[f2].label === oldFullLabel) {
-                            frames2[f2].label = newFullLabel;
-                            replacedCount++;
-                            pagesAffected[pages[p2].name] = true;
-                        }
-                    }
+
+                    replacedCount++;
+                    pagesAffected[frame.parentPage.name]=true;
+                    changedFrames.push(frame);
                 }
             }
         }
-        
-        
 
-        restoreLayerStates(layers, originalStates);
+        for(var i=0;i<layers.length;i++){
+            layers[i].locked=states[i].locked;
+            layers[i].visible=states[i].visible;
+        }
 
-        var affectedPagesList = [];
-        for (var pageName in pagesAffected) {
-            if (pagesAffected.hasOwnProperty(pageName)) {
-                affectedPagesList.push(pageName);
-            }
+        var affectedPagesList=[];
+        for(var page in pagesAffected){
+            if(pagesAffected.hasOwnProperty(page))affectedPagesList.push(page);
         }
-        affectedPagesList.sort(function(a,b){ return Number(a) - Number(b); });
-        affectedPagesList = affectedPagesList.join(", ");
-        
-        if (replacedCount > 0) {
-            alert("Replaced " + replacedCount + " label(s).\nPages affected: " + affectedPagesList);
-        } else {
-            alert("No matching labels were found.");
+        affectedPagesList.sort(function(a,b){return Number(a)-Number(b);});
+
+        if(changedFrames.length>0){
+            app.select(changedFrames);
+            alert("Replaced "+replacedCount+" labels.\nPages: "+affectedPagesList.join(", ")+"\n\nBoxes selected.");
+        }else{
+            alert("No matching labels found.");
         }
-        
-        function restoreLayerStates(layers, states) {
-            for (var i = 0; i < layers.length; i++) {
-                layers[i].locked = states[i].locked;
-                layers[i].visible = states[i].visible;
-            }
     }
-}
 })();
