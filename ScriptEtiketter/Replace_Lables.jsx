@@ -1,7 +1,7 @@
 #target "InDesign"
 
 (function(){
-    app.doScript(main, ScriptLanguage.JAVASCRIPT, [], UndoModes.ENTIRE_SCRIPT, "Fast Replace Labels and Contents");
+    app.doScript(main, ScriptLanguage.JAVASCRIPT, [], UndoModes.ENTIRE_SCRIPT, "Flexible Replace Labels and Contents");
 
     function main(){
         if(!app.documents.length){
@@ -11,21 +11,22 @@
         var doc = app.activeDocument;
         var priceGroups=["SEK_SE","SEK_NO","DKK_DK","EUR_EU","GBP_UK","EUR_BEIR","EUR_EURAEA","USD_US","EUR_DE"];
 
-        if(app.selection.length!==1||!(app.selection[0]instanceof TextFrame)){
-            alert("Select exactly one source text box first."); return;
-        }
+        var initialLabel="";
 
-        var initialLabel=app.selection[0].label;
-
-        for(var p=0;p<priceGroups.length;p++){
-            var suffix="_"+priceGroups[p];
-            if(initialLabel.substr(-suffix.length)===suffix){
-                initialLabel=initialLabel.substr(0,initialLabel.length-suffix.length);
-                break;
+        if(app.selection.length===1 && app.selection[0] instanceof TextFrame){
+            initialLabel=app.selection[0].label;
+            for(var p=0;p<priceGroups.length;p++){
+                var suffix="_"+priceGroups[p];
+                if(initialLabel.substr(-suffix.length)===suffix){
+                    initialLabel=initialLabel.substr(0,initialLabel.length-suffix.length);
+                    break;
+                }
             }
+        }else{
+            initialLabel="";
         }
 
-        var dlg=app.dialogs.add({name:"Fast Replace Labels",canCancel:true});
+        var dlg=app.dialogs.add({name:"Replace Script Labels",canCancel:true});
         var col1=dlg.dialogColumns.add();
 
         var oldLabelField=col1.textEditboxes.add({staticLabel:"Old base label:",editContents:initialLabel,minWidth:180});
